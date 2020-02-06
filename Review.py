@@ -1,0 +1,85 @@
+import tensorflow as tf
+from tensorflow import keras
+import numpy as np
+
+data = keras.datasets.imdb
+
+(train_data, train_labels), (test_data, test_labels) = data.load_data(num_words=88000)
+
+word_index = data.get_word_index()
+word_index = {k:(v+3) for k, v in word_index.items()}
+
+word_index["<PAD>"] = 0 #make movie sets the same length, adds padding 0s to the lists to make them equal
+word_index["<START>"] = 1
+word_index["<UNK>"] = 2#unknown characters
+word_index["<UNUSED>"] = 3
+
+#reverses the word to key relationship
+reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
+
+#preprocess the data
+train_data = keras.preprocessing.sequence.pad_sequences(train_data, value= word_index["<PAD>"], padding= "post", maxlen= 250)
+test_data = keras.preprocessing.sequence.pad_sequences(test_data, value= word_index["<PAD>"], padding= "post", maxlen= 250)
+
+
+#decode training and testing data into human readable words
+def decode_review(text):
+    return " ".join([reverse_word_index.get(i, "?") for i in text])
+
+############################### define and save model ###############################
+#comment this section to skip retraining model after the first run
+
+model = keras.Sequential()
+model.add(keras.layers.Embedding(88000,16)) #group vectors of similarly used words and average them out
+model.add(keras.layers.GlobalAveragePooling1D())
+model.add(keras.layers.Dense(16, activation= "relu"))
+model.add(keras.layers.Dense(1, activation= "sigmoid"))
+
+model.summary()
+
+model.compile(optimizer= "adam", loss= "binary_crossentropy", metrics= ["accuracy"])
+
+x_val = train_data[:10000]
+x_train = train_data[10000:]
+
+y_val = train_labels[:10000]
+y_train = train_labels[10000:]
+
+fit_model = model.fit(x_train, y_train, epochs= 40, batch_size= 512, validation_data= (x_val, y_val), verbose= 1)
+
+results = model.evaluate(test_data, test_labels)
+
+print(results)
+
+
+model.save("model.h5") 
+############################### define and save model ###############################
+
+model = keras.models.load_model("model.h5")
+
+#ensure that all data loaded in is in a consistent format
+def review_encode(s): 
+    encoded = [1]
+
+    for word in s:
+        if word.lower() in word_index:
+            encoded.append(word_index[word.lower()])
+        else:
+            encoded.append(2)
+
+    return encoded
+
+#load in a "The Godfather" review
+with open("test.txt", encoding= "utf-8") as f:
+    for line in f.readlines():
+        nline = line.replace(",", "").replace(".", "").replace("(", "").replace(")", "").replace(":", "").replace("\"", "").strip().split(" ")
+        encode = review_encode(nline)
+        encode = keras.preprocessing.sequence.pad_sequences([encode], value=word_index["<PAD>"], padding="post",maxlen=250)
+        predict = model.predict(encode)
+        print(nline)
+        print(encode)
+        print("Review is", predict[0], "percent positive")
+
+
+
+
